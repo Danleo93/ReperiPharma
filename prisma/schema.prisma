@@ -1,0 +1,205 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum CalendarStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+}
+
+enum HolidayType {
+  NATIONAL
+  LOCAL
+  COMPANY
+  MANUAL
+}
+
+enum ShiftFramework {
+  WEEKDAY_AFTERNOON_ONCALL
+  SATURDAY_MORNING_ONCALL
+  DOUBLE_ONCALL_DAY_NIGHT
+  CUSTOM
+}
+
+enum DayType {
+  WEEKDAY
+  SATURDAY
+  SUNDAY
+  NATIONAL_HOLIDAY
+  MANUAL_HOLIDAY
+  LOCAL_HOLIDAY
+  COMPANY_HOLIDAY
+}
+
+enum ShiftType {
+  AFTERNOON
+  ON_CALL_WEEKDAY
+  SATURDAY_MORNING
+  ON_CALL_SATURDAY
+  ON_CALL_DAY
+  ON_CALL_NIGHT
+  MORNING
+  CUSTOM
+}
+
+enum HolidayScoreMode {
+  SPLIT_BETWEEN_ON_CALL_SHIFTS
+}
+
+model Site {
+  id               String            @id @default(cuid())
+  name             String            @unique
+  active           Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  pharmacists      PharmacistSite[]
+  calendarYears    CalendarYear[]
+  holidays         Holiday[]
+  assignments      ShiftAssignment[]
+  onCallRecords    OnCallRecord[]
+}
+
+model Pharmacist {
+  id               String            @id @default(cuid())
+  firstName        String
+  lastName         String
+  initials         String
+  color            String            @default("#0f766e")
+  active           Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  sites            PharmacistSite[]
+  assignments      ShiftAssignment[]
+  onCallRecords    OnCallRecord[]
+
+  @@index([lastName, firstName])
+}
+
+model PharmacistSite {
+  id             String      @id @default(cuid())
+  pharmacistId   String
+  siteId         String
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  pharmacist     Pharmacist  @relation(fields: [pharmacistId], references: [id], onDelete: Cascade)
+  site           Site        @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@unique([pharmacistId, siteId])
+  @@index([siteId])
+}
+
+model CalendarYear {
+  id               String            @id @default(cuid())
+  year             Int
+  siteId           String
+  status           CalendarStatus    @default(DRAFT)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  site             Site              @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  days             CalendarDay[]
+
+  @@unique([year, siteId])
+  @@index([status])
+}
+
+model Holiday {
+  id                     String          @id @default(cuid())
+  date                   DateTime        @db.Date
+  name                   String
+  score                  Float           @default(1)
+  type                   HolidayType
+  siteId                 String?
+  defaultShiftFramework  ShiftFramework
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+  site                   Site?           @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  calendarDays           CalendarDay[]
+
+  @@index([date, type])
+  @@index([siteId])
+}
+
+model CalendarDay {
+  id               String             @id @default(cuid())
+  calendarYearId   String
+  date             DateTime           @db.Date
+  dayOfWeek        Int
+  dayType          DayType
+  holidayId        String?
+  shiftFramework   ShiftFramework
+  notes            String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  calendarYear     CalendarYear       @relation(fields: [calendarYearId], references: [id], onDelete: Cascade)
+  holiday          Holiday?           @relation(fields: [holidayId], references: [id], onDelete: SetNull)
+  assignments      ShiftAssignment[]
+  onCallRecords    OnCallRecord[]
+
+  @@unique([calendarYearId, date])
+  @@index([date])
+  @@index([dayType])
+}
+
+model ShiftAssignment {
+  id               String          @id @default(cuid())
+  calendarDayId    String
+  siteId           String
+  shiftType        ShiftType
+  pharmacistId     String?
+  notes            String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  calendarDay      CalendarDay     @relation(fields: [calendarDayId], references: [id], onDelete: Cascade)
+  site             Site            @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  pharmacist       Pharmacist?     @relation(fields: [pharmacistId], references: [id], onDelete: SetNull)
+  onCallRecords    OnCallRecord[]
+
+  @@unique([calendarDayId, shiftType])
+  @@index([siteId])
+  @@index([pharmacistId])
+}
+
+model OnCallRecord {
+  id                  String            @id @default(cuid())
+  calendarDayId       String
+  siteId              String
+  pharmacistId        String
+  shiftAssignmentId   String?
+  startTime           String
+  endTime             String
+  department          String
+  physician           String
+  notes               String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  calendarDay         CalendarDay       @relation(fields: [calendarDayId], references: [id], onDelete: Cascade)
+  site                Site              @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  pharmacist          Pharmacist        @relation(fields: [pharmacistId], references: [id], onDelete: Restrict)
+  shiftAssignment     ShiftAssignment?  @relation(fields: [shiftAssignmentId], references: [id], onDelete: SetNull)
+
+  @@index([siteId])
+  @@index([pharmacistId])
+  @@index([calendarDayId, startTime])
+}
+
+model Settings {
+  id                     String            @id @default(cuid())
+  dayOnCallStartTime     String            @default("08:00")
+  dayOnCallEndTime       String            @default("20:00")
+  nightOnCallStartTime   String            @default("20:00")
+  nightOnCallEndTime     String            @default("08:00")
+  holidayScoreMode       HolidayScoreMode  @default(SPLIT_BETWEEN_ON_CALL_SHIFTS)
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+}
