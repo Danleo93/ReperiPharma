@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import {
   assertCalendarYearNotDuplicated,
   buildYearPlan,
+  dateKey,
   getItalianNationalHolidays,
   monthDateRange,
   shiftTypesForFramework,
@@ -83,24 +84,37 @@ export async function generateCalendarYear(input: { year: number; siteId: string
 
     const dayPlans = buildYearPlan(year, siteId, holidays);
 
-    for (const dayPlan of dayPlans) {
-      await tx.calendarDay.create({
-        data: {
-          calendarYearId: calendarYear.id,
-          date: dayPlan.date,
-          dayOfWeek: dayPlan.dayOfWeek,
-          dayType: dayPlan.dayType,
-          holidayId: dayPlan.holiday?.id,
-          shiftFramework: dayPlan.shiftFramework,
-          assignments: {
-            create: dayPlan.shiftTypes.map((shiftType) => ({
-              siteId,
-              shiftType,
-            })),
-          },
-        },
-      });
-    }
+    await tx.calendarDay.createMany({
+      data: dayPlans.map((dayPlan) => ({
+        calendarYearId: calendarYear.id,
+        date: dayPlan.date,
+        dayOfWeek: dayPlan.dayOfWeek,
+        dayType: dayPlan.dayType,
+        holidayId: dayPlan.holiday?.id,
+        shiftFramework: dayPlan.shiftFramework,
+      })),
+    });
+
+    const createdDays = await tx.calendarDay.findMany({
+      where: { calendarYearId: calendarYear.id },
+      select: { id: true, date: true },
+    });
+    const dayIdByDate = new Map(createdDays.map((day) => [dateKey(day.date), day.id]));
+
+    await tx.shiftAssignment.createMany({
+      data: dayPlans.flatMap((dayPlan) => {
+        const calendarDayId = dayIdByDate.get(dateKey(dayPlan.date));
+        if (!calendarDayId) {
+          throw new Error(`Giorno non trovato dopo la generazione: ${dateKey(dayPlan.date)}`);
+        }
+
+        return dayPlan.shiftTypes.map((shiftType) => ({
+          calendarDayId,
+          siteId,
+          shiftType,
+        }));
+      }),
+    });
 
     return tx.calendarYear.findUniqueOrThrow({
       where: { id: calendarYear.id },
@@ -113,7 +127,7 @@ export async function generateCalendarYear(input: { year: number; siteId: string
         },
       },
     });
-  });
+  }, { timeout: 20_000 });
 }
 
 export async function applyHolidayToExistingCalendars(input: {

@@ -102,7 +102,9 @@ function PharmacistForm({
   sites: Array<{ id: string; name: string; active: boolean }>;
   compact?: boolean;
 }) {
-  const selectedSiteIds = new Set(pharmacist?.sites?.map((site) => site.siteId) ?? []);
+  const selectedSiteIds = new Set(
+    pharmacist ? pharmacist.sites?.map((site) => site.siteId) ?? [] : sites.filter((site) => site.active).map((site) => site.id),
+  );
 
   return (
     <form action={upsertPharmacistAction} className={compact ? "grid grid-cols-[1fr_1fr_80px_60px_1.4fr_auto] gap-2" : "grid gap-4 md:grid-cols-[1fr_1fr_120px_90px_1.4fr_auto]"}>
