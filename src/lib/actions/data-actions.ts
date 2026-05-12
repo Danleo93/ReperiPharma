@@ -65,6 +65,26 @@ export async function setPharmacistActiveAction(formData: FormData) {
   revalidatePath("/dati/farmacisti");
 }
 
+export async function deletePharmacistAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const calls = await prisma.onCallRecord.count({
+    where: { pharmacistId: id },
+  });
+
+  if (calls > 0) {
+    throw new Error("Il farmacista ha chiamate registrate: disattivalo per preservare lo storico.");
+  }
+
+  await prisma.pharmacist.delete({
+    where: { id },
+  });
+
+  revalidatePath("/dati/farmacisti");
+  revalidatePath("/calendario-mensile");
+  revalidatePath("/chiamate");
+  revalidatePath("/dashboard");
+}
+
 export async function upsertSiteAction(formData: FormData) {
   const input = siteSchema.parse(Object.fromEntries(formData));
 

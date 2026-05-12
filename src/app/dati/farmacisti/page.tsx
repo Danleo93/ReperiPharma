@@ -1,9 +1,9 @@
-import { RotateCcw, UserCheck, UserX } from "lucide-react";
+import { Save, Trash2, UserCheck, UserX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { setPharmacistActiveAction, upsertPharmacistAction } from "@/lib/actions/data-actions";
+import { deletePharmacistAction, setPharmacistActiveAction, upsertPharmacistAction } from "@/lib/actions/data-actions";
 import { prisma } from "@/lib/db/prisma";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +11,10 @@ export const dynamic = "force-dynamic";
 export default async function FarmacistiPage() {
   const [pharmacists, sites] = await Promise.all([
     prisma.pharmacist.findMany({
-      include: { sites: { include: { site: true } } },
+      include: {
+        sites: { include: { site: true } },
+        _count: { select: { onCallRecords: true } },
+      },
       orderBy: [{ active: "desc" }, { lastName: "asc" }, { firstName: "asc" }],
     }),
     prisma.site.findMany({ orderBy: [{ active: "desc" }, { name: "asc" }] }),
@@ -21,7 +24,9 @@ export default async function FarmacistiPage() {
     <>
       <section>
         <h1 className="text-2xl font-semibold tracking-tight">Farmacisti</h1>
-        <p className="text-sm text-slate-600">Anagrafica con iniziali automatiche modificabili, colore e stato attivo.</p>
+        <p className="text-sm text-slate-600">
+          Anagrafica con iniziali automatiche, presidi associati e stato attivo. Le modifiche nei campi a destra vengono applicate premendo Salva.
+        </p>
       </section>
 
       <Card className="rounded-md">
@@ -63,18 +68,38 @@ export default async function FarmacistiPage() {
                       : "Nessun presidio"}
                   </TableCell>
                   <TableCell>{pharmacist.active ? "Attivo" : "Disattivo"}</TableCell>
-                  <TableCell className="w-[680px]">
+                  <TableCell className="w-[760px]">
                     <PharmacistForm pharmacist={pharmacist} sites={sites} compact />
                   </TableCell>
                   <TableCell>
-                    <form action={setPharmacistActiveAction} className="flex justify-end">
-                      <input type="hidden" name="id" value={pharmacist.id} />
-                      <input type="hidden" name="active" value={pharmacist.active ? "false" : "true"} />
-                      <Button type="submit" variant="outline" size="sm" className="rounded-md">
-                        {pharmacist.active ? <UserX className="size-4" /> : <UserCheck className="size-4" />}
-                        {pharmacist.active ? "Disattiva" : "Riattiva"}
-                      </Button>
-                    </form>
+                    <div className="flex justify-end gap-2">
+                      <form action={setPharmacistActiveAction}>
+                        <input type="hidden" name="id" value={pharmacist.id} />
+                        <input type="hidden" name="active" value={pharmacist.active ? "false" : "true"} />
+                        <Button type="submit" variant="outline" size="sm" className="rounded-md">
+                          {pharmacist.active ? <UserX className="size-4" /> : <UserCheck className="size-4" />}
+                          {pharmacist.active ? "Disattiva" : "Riattiva"}
+                        </Button>
+                      </form>
+                      <form action={deletePharmacistAction}>
+                        <input type="hidden" name="id" value={pharmacist.id} />
+                        <Button
+                          type="submit"
+                          variant="destructive"
+                          size="sm"
+                          className="rounded-md"
+                          disabled={pharmacist._count.onCallRecords > 0}
+                          title={
+                            pharmacist._count.onCallRecords > 0
+                              ? "Non eliminabile: ha chiamate registrate. Usa Disattiva."
+                              : "Elimina farmacista"
+                          }
+                        >
+                          <Trash2 className="size-4" />
+                          Elimina
+                        </Button>
+                      </form>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -165,8 +190,9 @@ function PharmacistForm({
           ))}
         </div>
       </fieldset>
-      <Button type="submit" className="rounded-md bg-teal-700 hover:bg-teal-800" size={compact ? "icon" : "default"}>
-        {compact ? <RotateCcw className="size-4" /> : "Salva"}
+      <Button type="submit" className="rounded-md bg-teal-700 hover:bg-teal-800" size={compact ? "sm" : "default"}>
+        <Save className="size-4" />
+        Salva
       </Button>
     </form>
   );
