@@ -9,8 +9,10 @@ import {
   WEEKDAY_LABELS,
   calculateHolidayScoreDistribution,
   calculatePharmacistMetrics,
+  dateInputRange,
   durationMinutes,
   formatMinutes,
+  intersectDateRanges,
   monthDateRange,
 } from "@/lib/domain";
 
@@ -21,24 +23,34 @@ export async function GET(request: NextRequest) {
   const calendarYearId = params.get("calendarYearId") ?? undefined;
   const pharmacistId = params.get("pharmacistId") ?? undefined;
   const month = params.get("month") ? Number(params.get("month")) : undefined;
+  const from = params.get("from") ?? undefined;
+  const to = params.get("to") ?? undefined;
 
   const selectedCalendar = calendarYearId
     ? await prisma.calendarYear.findUnique({ where: { id: calendarYearId }, include: { site: true } })
     : null;
 
-  const dateRange = selectedCalendar
+  const calendarRange = selectedCalendar
     ? month
       ? monthDateRange(selectedCalendar.year, month)
       : { start: new Date(Date.UTC(selectedCalendar.year, 0, 1)), end: new Date(Date.UTC(selectedCalendar.year + 1, 0, 1)) }
     : undefined;
+  const dateRange = intersectDateRanges(calendarRange, dateInputRange(from, to));
 
   const calendarDayWhere = {
     ...(calendarYearId ? { calendarYearId } : {}),
-    ...(dateRange ? { date: { gte: dateRange.start, lt: dateRange.end } } : {}),
+    ...(dateRange
+      ? {
+          date: {
+            ...(dateRange.start ? { gte: dateRange.start } : {}),
+            ...(dateRange.end ? { lt: dateRange.end } : {}),
+          },
+        }
+      : {}),
   };
 
   const [pharmacists, shifts, calls, holidays] = await Promise.all([
-    prisma.pharmacist.findMany({ orderBy: { lastName: "asc" } }),
+    prisma.pharmacist.findMany({ include: { sites: true }, orderBy: { lastName: "asc" } }),
     prisma.shiftAssignment.findMany({
       where: {
         ...(pharmacistId ? { pharmacistId } : {}),
@@ -62,13 +74,34 @@ export async function GET(request: NextRequest) {
       orderBy: [{ calendarDay: { date: "asc" } }, { startTime: "asc" }],
     }),
     prisma.holiday.findMany({
-      where: dateRange ? { date: { gte: dateRange.start, lt: dateRange.end } } : {},
+      where: {
+        ...(dateRange
+          ? {
+              date: {
+                ...(dateRange.start ? { gte: dateRange.start } : {}),
+                ...(dateRange.end ? { lt: dateRange.end } : {}),
+              },
+            }
+          : {}),
+        ...(selectedCalendar ? { OR: [{ siteId: null }, { siteId: selectedCalendar.siteId }] } : {}),
+      },
       include: { site: true, calendarDays: { include: { assignments: { include: { pharmacist: true } } } } },
       orderBy: { date: "asc" },
     }),
   ]);
 
-  const visiblePharmacists = pharmacistId ? pharmacists.filter((pharmacist) => pharmacist.id === pharmacistId) : pharmacists;
+  const pharmacistIdsWithData = new Set([
+    ...shifts.map((shift) => shift.pharmacistId).filter(Boolean),
+    ...calls.map((call) => call.pharmacistId),
+  ]);
+  const visiblePharmacists = pharmacistId
+    ? pharmacists.filter((pharmacist) => pharmacist.id === pharmacistId)
+    : selectedCalendar
+      ? pharmacists.filter(
+          (pharmacist) =>
+            pharmacist.sites.some((site) => site.siteId === selectedCalendar.siteId) || pharmacistIdsWithData.has(pharmacist.id),
+        )
+      : pharmacists;
   const metrics = calculatePharmacistMetrics(visiblePharmacists, shifts, calls);
 
   const workbook = new ExcelJS.Workbook();

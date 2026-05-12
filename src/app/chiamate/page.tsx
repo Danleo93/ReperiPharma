@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { deleteOnCallRecordAction, upsertOnCallRecordAction } from "@/lib/actions/call-actions";
 import { prisma } from "@/lib/db/prisma";
-import { durationMinutes, formatMinutes, monthDateRange } from "@/lib/domain";
+import { dateInputRange, durationMinutes, formatMinutes, intersectDateRanges } from "@/lib/domain";
 
 export const dynamic = "force-dynamic";
 
@@ -31,12 +31,20 @@ export default async function ChiamatePage({
       })
     : [];
 
-  const dateWhere =
-    params.from && params.to
-      ? { date: { gte: new Date(params.from), lt: new Date(params.to) } }
-      : selectedCalendar
-        ? { date: { gte: monthDateRange(selectedCalendar.year, 1).start, lt: new Date(Date.UTC(selectedCalendar.year + 1, 0, 1)) } }
-        : {};
+  const dateRange = selectedCalendar
+    ? intersectDateRanges(
+        { start: new Date(Date.UTC(selectedCalendar.year, 0, 1)), end: new Date(Date.UTC(selectedCalendar.year + 1, 0, 1)) },
+        dateInputRange(params.from, params.to),
+      )
+    : dateInputRange(params.from, params.to);
+  const dateWhere = dateRange
+    ? {
+        date: {
+          ...(dateRange.start ? { gte: dateRange.start } : {}),
+          ...(dateRange.end ? { lt: dateRange.end } : {}),
+        },
+      }
+    : {};
 
   const calls = await prisma.onCallRecord.findMany({
     where: {

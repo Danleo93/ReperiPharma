@@ -56,6 +56,10 @@ export default async function CalendarioMensilePage({
         include: { pharmacist: true },
         orderBy: { createdAt: "asc" },
       },
+      onCallRecords: {
+        include: { pharmacist: true },
+        orderBy: { startTime: "asc" },
+      },
       _count: {
         select: { onCallRecords: true },
       },
@@ -152,6 +156,22 @@ export default async function CalendarioMensilePage({
           shiftFramework: day.shiftFramework,
           holiday: day.holiday ? { name: day.holiday.name, score: day.holiday.score } : null,
           callCount: day._count.onCallRecords,
+          calls: day.onCallRecords.map((call) => ({
+            id: call.id,
+            startTime: call.startTime,
+            endTime: call.endTime,
+            department: call.department,
+            physician: call.physician,
+            notes: call.notes,
+            pharmacist: {
+              id: call.pharmacist.id,
+              firstName: call.pharmacist.firstName,
+              lastName: call.pharmacist.lastName,
+              initials: call.pharmacist.initials,
+              color: call.pharmacist.color,
+              active: call.pharmacist.active,
+            },
+          })),
           assignments: day.assignments.map((assignment) => ({
             id: assignment.id,
             shiftType: assignment.shiftType,

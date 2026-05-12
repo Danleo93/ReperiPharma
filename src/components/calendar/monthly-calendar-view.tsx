@@ -14,6 +14,8 @@ import {
   MONTH_LABELS,
   SHIFT_TYPE_LABELS,
   calculateMonthlyOnCallCounts,
+  durationMinutes,
+  formatMinutes,
   resolveAssignmentForCallStart,
 } from "@/lib/domain";
 import { cn } from "@/lib/utils";
@@ -44,6 +46,15 @@ type DayItem = {
   holiday: { name: string; score: number } | null;
   assignments: AssignmentItem[];
   callCount: number;
+  calls: Array<{
+    id: string;
+    startTime: string;
+    endTime: string;
+    department: string;
+    physician: string;
+    notes: string | null;
+    pharmacist: PharmacistOption;
+  }>;
 };
 
 type Settings = {
@@ -148,6 +159,25 @@ export function MonthlyCalendarView({
 
                 {day.holiday && <div className="mb-2 truncate text-xs font-medium text-amber-800">{day.holiday.name}</div>}
 
+                {day.callCount > 0 && (
+                  <DialogTrigger
+                    render={
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDay(day)}
+                        className="mb-2 flex w-full items-center justify-between rounded-md border border-teal-200 bg-teal-50 px-2 py-1 text-left text-xs font-semibold text-teal-800 hover:bg-teal-100"
+                        aria-label={`Apri ${day.callCount} chiamate del ${day.date}`}
+                      />
+                    }
+                  >
+                    <span className="flex items-center gap-1">
+                      <PhoneCall className="size-3" />
+                      {day.callCount === 1 ? "1 chiamata" : `${day.callCount} chiamate`}
+                    </span>
+                    <span>Apri</span>
+                  </DialogTrigger>
+                )}
+
                 <div className="space-y-2">
                   {day.assignments.map((assignment) => (
                     <form key={assignment.id} action={updateShiftAssignmentAction} className="rounded-md border border-slate-200 bg-white p-2">
@@ -235,6 +265,44 @@ export function MonthlyCalendarView({
                           </div>
                         </div>
                       ))}
+
+                      <div className="space-y-2">
+                        <h3 className="text-sm font-semibold">Chiamate registrate</h3>
+                        {selectedDay.calls.length === 0 ? (
+                          <div className="rounded-md border border-dashed border-slate-200 p-3 text-sm text-slate-500">
+                            Nessuna chiamata registrata per questa data.
+                          </div>
+                        ) : (
+                          selectedDay.calls.map((call) => (
+                            <div key={call.id} className="rounded-md border border-teal-200 bg-teal-50/70 p-3 text-sm">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="font-semibold text-teal-900">
+                                  {call.startTime} - {call.endTime}
+                                </div>
+                                <Badge variant="outline" className="rounded-md bg-white text-teal-800">
+                                  {formatMinutes(durationMinutes(call.startTime, call.endTime))}
+                                </Badge>
+                              </div>
+                              <div className="mt-2 space-y-1 text-slate-700">
+                                <div>
+                                  <span className="font-medium">Farmacista:</span> {call.pharmacist.firstName} {call.pharmacist.lastName}
+                                </div>
+                                <div>
+                                  <span className="font-medium">Reparto:</span> {call.department}
+                                </div>
+                                <div>
+                                  <span className="font-medium">Medico:</span> {call.physician}
+                                </div>
+                                {call.notes && (
+                                  <div>
+                                    <span className="font-medium">Note:</span> {call.notes}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
                     </div>
 
                     <form action={upsertOnCallRecordAction} className="space-y-3">

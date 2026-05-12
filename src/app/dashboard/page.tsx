@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { prisma } from "@/lib/db/prisma";
-import { calculatePharmacistMetrics, formatMinutes, monthDateRange, MONTH_LABELS } from "@/lib/domain";
+import { calculatePharmacistMetrics, dateInputRange, formatMinutes, intersectDateRanges, monthDateRange, MONTH_LABELS } from "@/lib/domain";
 
 export const dynamic = "force-dynamic";
 
@@ -17,26 +17,29 @@ export default async function DashboardPage({
   const params = (await searchParams) ?? {};
   const [calendars, pharmacists] = await Promise.all([
     prisma.calendarYear.findMany({ include: { site: true }, orderBy: [{ year: "desc" }, { site: { name: "asc" } }] }),
-    prisma.pharmacist.findMany({ orderBy: [{ active: "desc" }, { lastName: "asc" }] }),
+    prisma.pharmacist.findMany({ include: { sites: true }, orderBy: [{ active: "desc" }, { lastName: "asc" }] }),
   ]);
 
   const selectedCalendar = calendars.find((calendar) => calendar.id === params.calendarYearId);
   const month = params.month ? Number(params.month) : undefined;
-  const from = params.from ? new Date(params.from) : undefined;
-  const to = params.to ? new Date(params.to) : undefined;
-
-  const dateWhere = selectedCalendar
+  const calendarRange = selectedCalendar
     ? month
       ? monthDateRange(selectedCalendar.year, month)
       : { start: new Date(Date.UTC(selectedCalendar.year, 0, 1)), end: new Date(Date.UTC(selectedCalendar.year + 1, 0, 1)) }
-    : from && to
-      ? { start: from, end: to }
-      : undefined;
+    : undefined;
+  const dateWhere = intersectDateRanges(calendarRange, dateInputRange(params.from, params.to));
 
   const pharmacistWhere = params.pharmacistId ? { pharmacistId: params.pharmacistId } : {};
   const calendarDayWhere = {
     ...(selectedCalendar ? { calendarYearId: selectedCalendar.id } : {}),
-    ...(dateWhere ? { date: { gte: dateWhere.start, lt: dateWhere.end } } : {}),
+    ...(dateWhere
+      ? {
+          date: {
+            ...(dateWhere.start ? { gte: dateWhere.start } : {}),
+            ...(dateWhere.end ? { lt: dateWhere.end } : {}),
+          },
+        }
+      : {}),
   };
 
   const [shifts, calls] = await Promise.all([
@@ -61,9 +64,18 @@ export default async function DashboardPage({
     }),
   ]);
 
+  const pharmacistIdsWithData = new Set([
+    ...shifts.map((shift) => shift.pharmacistId).filter(Boolean),
+    ...calls.map((call) => call.pharmacistId),
+  ]);
   const visiblePharmacists = params.pharmacistId
     ? pharmacists.filter((pharmacist) => pharmacist.id === params.pharmacistId)
-    : pharmacists;
+    : selectedCalendar
+      ? pharmacists.filter(
+          (pharmacist) =>
+            pharmacist.sites.some((site) => site.siteId === selectedCalendar.siteId) || pharmacistIdsWithData.has(pharmacist.id),
+        )
+      : pharmacists;
 
   const metrics = calculatePharmacistMetrics(visiblePharmacists, shifts, calls);
   const chartRows = metrics.map((row) => ({

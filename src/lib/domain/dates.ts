@@ -47,6 +47,37 @@ export function monthDateRange(year: number, month: number) {
   return { start, end };
 }
 
+export type DateRange = {
+  start?: Date;
+  end?: Date;
+};
+
+export function dateInputRange(from?: string, to?: string): DateRange | undefined {
+  if (!from && !to) {
+    return undefined;
+  }
+
+  return {
+    ...(from ? { start: parseDateKey(from) } : {}),
+    ...(to ? { end: addUtcDays(parseDateKey(to), 1) } : {}),
+  };
+}
+
+export function intersectDateRanges(...ranges: Array<DateRange | undefined>) {
+  const activeRanges = ranges.filter(Boolean) as DateRange[];
+  if (activeRanges.length === 0) {
+    return undefined;
+  }
+
+  const starts = activeRanges.map((range) => range.start).filter(Boolean) as Date[];
+  const ends = activeRanges.map((range) => range.end).filter(Boolean) as Date[];
+
+  return {
+    ...(starts.length > 0 ? { start: new Date(Math.max(...starts.map((date) => date.getTime()))) } : {}),
+    ...(ends.length > 0 ? { end: new Date(Math.min(...ends.map((date) => date.getTime()))) } : {}),
+  };
+}
+
 export function minutesFromTime(time: string) {
   const [hours, minutes] = time.split(":").map(Number);
   return hours * 60 + minutes;

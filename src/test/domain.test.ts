@@ -3,7 +3,9 @@ import {
   assertCalendarYearNotDuplicated,
   buildYearPlan,
   calculateHolidayScoreDistribution,
+  dateInputRange,
   getItalianNationalHolidays,
+  intersectDateRanges,
   makeUtcDate,
   resolveAssignmentForCallStart,
   resolveDayPlan,
@@ -162,5 +164,23 @@ describe("chiamate", () => {
 
   it("chiamata 19:45-20:30 usa il farmacista dell'ora di inizio", () => {
     expect(resolveAssignmentForCallStart(assignments, "19:45", settings)?.pharmacistId).toBe("day-pharmacist");
+  });
+});
+
+describe("filtri data", () => {
+  it("rende inclusiva la data finale inserita nei filtri", () => {
+    const range = dateInputRange("2026-05-08", "2026-05-08");
+    expect(range?.start?.toISOString().slice(0, 10)).toBe("2026-05-08");
+    expect(range?.end?.toISOString().slice(0, 10)).toBe("2026-05-09");
+  });
+
+  it("interseca il periodo calendario con il periodo scelto dall'utente", () => {
+    const range = intersectDateRanges(
+      { start: makeUtcDate(2026, 1, 1), end: makeUtcDate(2027, 1, 1) },
+      dateInputRange("2026-05-08", "2026-05-31"),
+    );
+
+    expect(range?.start?.toISOString().slice(0, 10)).toBe("2026-05-08");
+    expect(range?.end?.toISOString().slice(0, 10)).toBe("2026-06-01");
   });
 });

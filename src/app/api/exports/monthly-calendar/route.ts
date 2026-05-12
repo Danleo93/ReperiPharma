@@ -54,7 +54,9 @@ export async function GET(request: NextRequest) {
     ...days.map((day) => {
       const shifts = day.assignments
         .map((assignment) => {
-          const pharmacist = assignment.pharmacist?.initials ?? "Scoperto";
+          const pharmacist = assignment.pharmacist
+            ? `${assignment.pharmacist.firstName} ${assignment.pharmacist.lastName}`
+            : "Scoperto";
           return `${SHIFT_TYPE_LABELS[assignment.shiftType]}: ${pharmacist}`;
         })
         .join("\n");
@@ -71,7 +73,7 @@ export async function GET(request: NextRequest) {
     startY: 30,
     head: [["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"]],
     body: rows,
-    styles: { fontSize: 7, cellPadding: 1.6, valign: "top", minCellHeight: 23 },
+    styles: { fontSize: 6.5, cellPadding: 1.4, overflow: "linebreak", valign: "top", minCellHeight: 23 },
     headStyles: { fillColor: [15, 118, 110] },
     columnStyles: {
       5: { fillColor: [236, 254, 255] },
