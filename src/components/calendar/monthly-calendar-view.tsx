@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { PhoneCall, Save } from "lucide-react";
+import { PhoneCall } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -177,12 +177,13 @@ export function MonthlyCalendarView({
                         )}
                       </div>
                       {!readOnly && (
-                        <div className="mt-2 flex gap-1">
+                        <div className="mt-2">
                           <select
                             name="pharmacistId"
                             defaultValue={assignment.pharmacistId ?? ""}
-                            className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs"
+                            className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
                             aria-label={`Assegna ${SHIFT_TYPE_LABELS[assignment.shiftType]}`}
+                            onChange={(event) => event.currentTarget.form?.requestSubmit()}
                           >
                             <option value="">Scoperto</option>
                             {pharmacists.map((pharmacist) => (
@@ -191,9 +192,6 @@ export function MonthlyCalendarView({
                               </option>
                             ))}
                           </select>
-                          <Button type="submit" size="icon" variant="outline" className="h-8 w-8 rounded-md" aria-label="Salva assegnazione">
-                            <Save className="size-3" />
-                          </Button>
                         </div>
                       )}
                     </form>
