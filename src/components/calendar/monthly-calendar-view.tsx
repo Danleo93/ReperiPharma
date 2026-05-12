@@ -71,6 +71,8 @@ export function MonthlyCalendarView({
   siteName,
   month,
   year,
+  selectedPharmacistId,
+  selectedPharmacistName,
   settings,
   readOnly,
 }: {
@@ -80,6 +82,8 @@ export function MonthlyCalendarView({
   siteName: string;
   month: number;
   year: number;
+  selectedPharmacistId?: string;
+  selectedPharmacistName?: string;
   settings: Settings;
   readOnly: boolean;
 }) {
@@ -90,6 +94,8 @@ export function MonthlyCalendarView({
     () => calculateMonthlyOnCallCounts(days.flatMap((day) => day.assignments)),
     [days],
   );
+  const visibleShiftCount = useMemo(() => days.reduce((total, day) => total + day.assignments.length, 0), [days]);
+  const visibleCallCount = useMemo(() => days.reduce((total, day) => total + day.calls.length, 0), [days]);
 
   const preferredAssignment = useMemo(() => {
     if (!selectedDay) {
@@ -129,7 +135,10 @@ export function MonthlyCalendarView({
             <div key={`lead-${index}`} className="min-h-40 border-b border-r border-slate-100 bg-slate-50" />
           ))}
 
-          {days.map((day) => (
+          {days.map((day) => {
+            const hasFilteredData = day.assignments.length > 0 || day.calls.length > 0;
+
+            return (
             <Dialog key={day.id}>
               <div
                 className={cn(
@@ -138,6 +147,8 @@ export function MonthlyCalendarView({
                   day.dayType === "SATURDAY" && "bg-cyan-50/60",
                   day.dayType === "SUNDAY" && "bg-rose-50",
                   day.dayType.includes("HOLIDAY") && "bg-amber-50",
+                  selectedPharmacistId && hasFilteredData && "ring-2 ring-inset ring-teal-500",
+                  selectedPharmacistId && !hasFilteredData && "bg-slate-50/70 text-slate-400",
                 )}
               >
                 <div className="mb-2 flex items-start justify-between gap-2">
@@ -226,6 +237,11 @@ export function MonthlyCalendarView({
                       )}
                     </form>
                   ))}
+                  {selectedPharmacistId && !hasFilteredData && (
+                    <div className="rounded-md border border-dashed border-slate-200 bg-white/60 px-2 py-3 text-center text-xs text-slate-400">
+                      Nessun turno
+                    </div>
+                  )}
                 </div>
 
                 <DialogTrigger
@@ -255,16 +271,24 @@ export function MonthlyCalendarView({
                   <div className="grid gap-6 md:grid-cols-2">
                     <div className="space-y-3">
                       <h3 className="text-sm font-semibold">Turni del giorno</h3>
-                      {selectedDay.assignments.map((assignment) => (
-                        <div key={assignment.id} className="rounded-md border border-slate-200 p-3 text-sm">
-                          <div className="font-medium">{SHIFT_TYPE_LABELS[assignment.shiftType]}</div>
-                          <div className="text-slate-600">
-                            {assignment.pharmacist
-                              ? `${assignment.pharmacist.firstName} ${assignment.pharmacist.lastName}`
-                              : "Scoperto"}
-                          </div>
+                      {selectedDay.assignments.length === 0 ? (
+                        <div className="rounded-md border border-dashed border-slate-200 p-3 text-sm text-slate-500">
+                          {selectedPharmacistName
+                            ? `Nessun turno per ${selectedPharmacistName} in questa data.`
+                            : "Nessun turno in questa data."}
                         </div>
-                      ))}
+                      ) : (
+                        selectedDay.assignments.map((assignment) => (
+                          <div key={assignment.id} className="rounded-md border border-slate-200 p-3 text-sm">
+                            <div className="font-medium">{SHIFT_TYPE_LABELS[assignment.shiftType]}</div>
+                            <div className="text-slate-600">
+                              {assignment.pharmacist
+                                ? `${assignment.pharmacist.firstName} ${assignment.pharmacist.lastName}`
+                                : "Scoperto"}
+                            </div>
+                          </div>
+                        ))
+                      )}
 
                       <div className="space-y-2">
                         <h3 className="text-sm font-semibold">Chiamate registrate</h3>
@@ -342,8 +366,8 @@ export function MonthlyCalendarView({
                         <select
                           id="pharmacistId"
                           name="pharmacistId"
-                          key={`${selectedDay.id}-${startTime}-${preferredAssignment?.pharmacistId ?? "none"}`}
-                          defaultValue={preferredAssignment?.pharmacistId ?? ""}
+                          key={`${selectedDay.id}-${startTime}-${preferredAssignment?.pharmacistId ?? selectedPharmacistId ?? "none"}`}
+                          defaultValue={preferredAssignment?.pharmacistId ?? selectedPharmacistId ?? ""}
                           className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                           required
                         >
@@ -380,7 +404,8 @@ export function MonthlyCalendarView({
                 )}
               </DialogContent>
             </Dialog>
-          ))}
+            );
+          })}
 
           {Array.from({ length: trailingBlanks }).map((_, index) => (
             <div key={`trail-${index}`} className="min-h-40 border-b border-r border-slate-100 bg-slate-50" />
@@ -391,22 +416,37 @@ export function MonthlyCalendarView({
       <aside className="space-y-4">
         <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
           <h3 className="mb-3 text-base font-semibold">Conteggi mese</h3>
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <Metric label="Assegnabili" value={monthlyCounts.assignable} />
-            <Metric label="Assegnati" value={monthlyCounts.assigned} />
-            <Metric label="Scoperti" value={monthlyCounts.uncovered} tone="danger" />
-          </div>
-          <div className="mt-4 space-y-2">
-            {monthlyCounts.byPharmacist.map((item) => (
-              <div key={item.initials} className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 text-sm">
-                <span className="flex items-center gap-2">
-                  <span className="size-3 rounded-full" style={{ backgroundColor: item.color }} />
-                  {item.pharmacist}
-                </span>
-                <span className="font-semibold">{item.count}</span>
+          {selectedPharmacistId ? (
+            <>
+              <div className="mb-3 rounded-md bg-teal-50 px-3 py-2 text-sm font-medium text-teal-900">
+                {selectedPharmacistName}
               </div>
-            ))}
-          </div>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <Metric label="Reperibilita" value={monthlyCounts.assigned} />
+                <Metric label="Turni totali" value={visibleShiftCount} />
+                <Metric label="Chiamate" value={visibleCallCount} />
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <Metric label="Assegnabili" value={monthlyCounts.assignable} />
+                <Metric label="Assegnati" value={monthlyCounts.assigned} />
+                <Metric label="Scoperti" value={monthlyCounts.uncovered} tone="danger" />
+              </div>
+              <div className="mt-4 space-y-2">
+                {monthlyCounts.byPharmacist.map((item) => (
+                  <div key={item.initials} className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 text-sm">
+                    <span className="flex items-center gap-2">
+                      <span className="size-3 rounded-full" style={{ backgroundColor: item.color }} />
+                      {item.pharmacist}
+                    </span>
+                    <span className="font-semibold">{item.count}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
 
         <div className="rounded-md border border-slate-200 bg-white p-4 text-sm shadow-sm">

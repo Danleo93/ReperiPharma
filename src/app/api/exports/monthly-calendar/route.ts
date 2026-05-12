@@ -15,6 +15,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   const calendarYearId = request.nextUrl.searchParams.get("calendarYearId");
   const month = Number(request.nextUrl.searchParams.get("month") ?? "1");
+  const pharmacistId = request.nextUrl.searchParams.get("pharmacistId");
 
   if (!calendarYearId) {
     return new Response("calendarYearId mancante", { status: 400 });
@@ -25,33 +26,46 @@ export async function GET(request: NextRequest) {
     include: { site: true },
   });
   const { start, end } = monthDateRange(calendar.year, month);
-  const days = await prisma.calendarDay.findMany({
-    where: {
-      calendarYearId,
-      date: { gte: start, lt: end },
-    },
-    include: {
-      holiday: true,
-      assignments: {
-        include: { pharmacist: true },
-        orderBy: { createdAt: "asc" },
+  const [days, selectedPharmacist] = await Promise.all([
+    prisma.calendarDay.findMany({
+      where: {
+        calendarYearId,
+        date: { gte: start, lt: end },
       },
-    },
-    orderBy: { date: "asc" },
-  });
+      include: {
+        holiday: true,
+        assignments: {
+          include: { pharmacist: true },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+      orderBy: { date: "asc" },
+    }),
+    pharmacistId ? prisma.pharmacist.findUnique({ where: { id: pharmacistId } }) : Promise.resolve(null),
+  ]);
+  const visibleDays = days.map((day) => ({
+    ...day,
+    assignments: pharmacistId
+      ? day.assignments.filter((assignment) => assignment.pharmacistId === pharmacistId)
+      : day.assignments,
+  }));
 
-  const counts = calculateMonthlyOnCallCounts(days.flatMap((day) => day.assignments));
+  const counts = calculateMonthlyOnCallCounts(visibleDays.flatMap((day) => day.assignments));
+  const totalVisibleShifts = visibleDays.reduce((total, day) => total + day.assignments.length, 0);
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
 
   doc.setFontSize(16);
   doc.text("ReperiPharma", 14, 14);
   doc.setFontSize(11);
   doc.text(`${calendar.site.name} - ${MONTH_LABELS[month - 1]} ${calendar.year}`, 14, 22);
+  if (selectedPharmacist) {
+    doc.text(`Farmacista: ${selectedPharmacist.firstName} ${selectedPharmacist.lastName}`, 14, 28);
+  }
 
-  const leadingBlanks = days.length ? (days[0].dayOfWeek + 6) % 7 : 0;
+  const leadingBlanks = visibleDays.length ? (visibleDays[0].dayOfWeek + 6) % 7 : 0;
   const cells = [
     ...Array.from({ length: leadingBlanks }).map(() => ""),
-    ...days.map((day) => {
+    ...visibleDays.map((day) => {
       const shifts = day.assignments
         .map((assignment) => {
           const pharmacist = assignment.pharmacist
@@ -70,7 +84,7 @@ export async function GET(request: NextRequest) {
   }
 
   autoTable(doc, {
-    startY: 30,
+    startY: selectedPharmacist ? 34 : 30,
     head: [["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"]],
     body: rows,
     styles: { fontSize: 6.5, cellPadding: 1.4, overflow: "linebreak", valign: "top", minCellHeight: 23 },
@@ -85,12 +99,18 @@ export async function GET(request: NextRequest) {
   autoTable(doc, {
     startY: finalY + 6,
     head: [["Statistica", "Valore"]],
-    body: [
-      ["Turni reperibilita assegnabili", counts.assignable],
-      ["Turni reperibilita assegnati", counts.assigned],
-      ["Turni reperibilita scoperti", counts.uncovered],
-      ...counts.byPharmacist.map((item) => [`${item.pharmacist} (${item.initials})`, item.count]),
-    ],
+    body: selectedPharmacist
+      ? [
+          ["Farmacista", `${selectedPharmacist.firstName} ${selectedPharmacist.lastName}`],
+          ["Turni reperibilita", counts.assigned],
+          ["Turni totali", totalVisibleShifts],
+        ]
+      : [
+          ["Turni reperibilita assegnabili", counts.assignable],
+          ["Turni reperibilita assegnati", counts.assigned],
+          ["Turni reperibilita scoperti", counts.uncovered],
+          ...counts.byPharmacist.map((item) => [`${item.pharmacist} (${item.initials})`, item.count]),
+        ],
     styles: { fontSize: 8 },
     headStyles: { fillColor: [15, 118, 110] },
     margin: { left: 14, right: 180 },

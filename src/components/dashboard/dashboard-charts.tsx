@@ -28,6 +28,8 @@ type MetricRow = {
 export function DashboardCharts({ rows }: { rows: MetricRow[] }) {
   const shiftRows = rows.filter((row) => row.onCallShifts > 0 || row.holidayScore > 0);
   const callRows = rows.filter((row) => row.callCount > 0 || row.callDurationMinutes > 0);
+  const shiftTicks = numberAxisTicks(Math.max(0, ...shiftRows.map((row) => Math.max(row.onCallShifts, row.holidayScore))));
+  const callTicks = numberAxisTicks(Math.max(0, ...callRows.map((row) => Math.max(row.callCount, row.callDurationHours))));
 
   return (
     <div className="grid gap-4 xl:grid-cols-2">
@@ -37,7 +39,7 @@ export function DashboardCharts({ rows }: { rows: MetricRow[] }) {
           <ResponsiveContainer width="100%" height="85%">
             <BarChart data={shiftRows} layout="vertical" margin={{ top: 8, right: 24, bottom: 8, left: 8 }} barCategoryGap={12}>
               <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-              <XAxis type="number" />
+              <XAxis type="number" ticks={shiftTicks} domain={[0, lastTick(shiftTicks)]} tickFormatter={axisTickFormatter} />
               <YAxis type="category" dataKey="pharmacist" width={170} tick={{ fontSize: 12 }} interval={0} />
               <Tooltip formatter={defaultTooltipFormatter} />
               <Legend />
@@ -56,7 +58,7 @@ export function DashboardCharts({ rows }: { rows: MetricRow[] }) {
           <ResponsiveContainer width="100%" height="85%">
             <BarChart data={callRows} layout="vertical" margin={{ top: 8, right: 24, bottom: 8, left: 8 }} barCategoryGap={12}>
               <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-              <XAxis type="number" />
+              <XAxis type="number" ticks={callTicks} domain={[0, lastTick(callTicks)]} tickFormatter={axisTickFormatter} />
               <YAxis type="category" dataKey="pharmacist" width={170} tick={{ fontSize: 12 }} interval={0} />
               <Tooltip formatter={callTooltipFormatter} />
               <Legend />
@@ -89,6 +91,34 @@ const callTooltipFormatter: TooltipProps<TooltipValueType, TooltipNameType>["for
 
 function chartHeight(rowCount: number) {
   return Math.max(320, Math.min(560, rowCount * 48 + 140));
+}
+
+function numberAxisTicks(maxValue: number) {
+  if (!Number.isFinite(maxValue) || maxValue <= 1) {
+    return [0, 1];
+  }
+
+  const rawStep = maxValue / 4;
+  const magnitude = 10 ** Math.floor(Math.log10(rawStep));
+  const normalized = rawStep / magnitude;
+  const niceStep = (normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10) * magnitude;
+  const step = Math.max(1, niceStep);
+  const maxTick = Math.ceil(maxValue / step) * step;
+  const ticks: number[] = [];
+
+  for (let value = 0; value <= maxTick + step / 2; value += step) {
+    ticks.push(Number(value.toFixed(2)));
+  }
+
+  return ticks;
+}
+
+function lastTick(ticks: number[]) {
+  return ticks[ticks.length - 1] ?? 1;
+}
+
+function axisTickFormatter(value: number | string) {
+  return Number(value).toLocaleString("it-IT", { maximumFractionDigits: 0 });
 }
 
 function EmptyChart({ message }: { message: string }) {

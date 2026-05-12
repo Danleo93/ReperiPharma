@@ -71,6 +71,15 @@ export default async function CalendarioMensilePage({
     pharmacist.sites.some((site) => site.siteId === selectedCalendar.siteId),
   );
   const activePharmacists = sitePharmacists.filter((pharmacist) => pharmacist.active);
+  const selectedPharmacistId = params.pharmacistId || undefined;
+  const selectedPharmacist = selectedPharmacistId
+    ? sitePharmacists.find((pharmacist) => pharmacist.id === selectedPharmacistId)
+    : undefined;
+  const pdfQuery = new URLSearchParams({
+    calendarYearId: selectedCalendar.id,
+    month: String(month),
+    ...(selectedPharmacistId ? { pharmacistId: selectedPharmacistId } : {}),
+  });
 
   return (
     <>
@@ -135,7 +144,7 @@ export default async function CalendarioMensilePage({
                 Filtra
               </Button>
               <a
-                href={`/api/exports/monthly-calendar?calendarYearId=${selectedCalendar.id}&month=${month}`}
+                href={`/api/exports/monthly-calendar?${pdfQuery.toString()}`}
                 className={buttonVariants({ className: "rounded-md bg-teal-700 hover:bg-teal-800" })}
               >
                   <Download className="size-4" />
@@ -147,47 +156,56 @@ export default async function CalendarioMensilePage({
       </Card>
 
       <MonthlyCalendarView
-        days={days.map((day) => ({
-          id: day.id,
-          date: day.date.toISOString().slice(0, 10),
-          dayOfMonth: day.date.getUTCDate(),
-          dayOfWeek: day.dayOfWeek,
-          dayType: day.dayType,
-          shiftFramework: day.shiftFramework,
-          holiday: day.holiday ? { name: day.holiday.name, score: day.holiday.score } : null,
-          callCount: day._count.onCallRecords,
-          calls: day.onCallRecords.map((call) => ({
-            id: call.id,
-            startTime: call.startTime,
-            endTime: call.endTime,
-            department: call.department,
-            physician: call.physician,
-            notes: call.notes,
-            pharmacist: {
-              id: call.pharmacist.id,
-              firstName: call.pharmacist.firstName,
-              lastName: call.pharmacist.lastName,
-              initials: call.pharmacist.initials,
-              color: call.pharmacist.color,
-              active: call.pharmacist.active,
-            },
-          })),
-          assignments: day.assignments.map((assignment) => ({
-            id: assignment.id,
-            shiftType: assignment.shiftType,
-            pharmacistId: assignment.pharmacistId,
-            pharmacist: assignment.pharmacist
-              ? {
-                  id: assignment.pharmacist.id,
-                  firstName: assignment.pharmacist.firstName,
-                  lastName: assignment.pharmacist.lastName,
-                  initials: assignment.pharmacist.initials,
-                  color: assignment.pharmacist.color,
-                  active: assignment.pharmacist.active,
-                }
-              : null,
-          })),
-        }))}
+        days={days.map((day) => {
+          const visibleAssignments = selectedPharmacistId
+            ? day.assignments.filter((assignment) => assignment.pharmacistId === selectedPharmacistId)
+            : day.assignments;
+          const visibleCalls = selectedPharmacistId
+            ? day.onCallRecords.filter((call) => call.pharmacistId === selectedPharmacistId)
+            : day.onCallRecords;
+
+          return {
+            id: day.id,
+            date: day.date.toISOString().slice(0, 10),
+            dayOfMonth: day.date.getUTCDate(),
+            dayOfWeek: day.dayOfWeek,
+            dayType: day.dayType,
+            shiftFramework: day.shiftFramework,
+            holiday: day.holiday ? { name: day.holiday.name, score: day.holiday.score } : null,
+            callCount: visibleCalls.length,
+            calls: visibleCalls.map((call) => ({
+              id: call.id,
+              startTime: call.startTime,
+              endTime: call.endTime,
+              department: call.department,
+              physician: call.physician,
+              notes: call.notes,
+              pharmacist: {
+                id: call.pharmacist.id,
+                firstName: call.pharmacist.firstName,
+                lastName: call.pharmacist.lastName,
+                initials: call.pharmacist.initials,
+                color: call.pharmacist.color,
+                active: call.pharmacist.active,
+              },
+            })),
+            assignments: visibleAssignments.map((assignment) => ({
+              id: assignment.id,
+              shiftType: assignment.shiftType,
+              pharmacistId: assignment.pharmacistId,
+              pharmacist: assignment.pharmacist
+                ? {
+                    id: assignment.pharmacist.id,
+                    firstName: assignment.pharmacist.firstName,
+                    lastName: assignment.pharmacist.lastName,
+                    initials: assignment.pharmacist.initials,
+                    color: assignment.pharmacist.color,
+                    active: assignment.pharmacist.active,
+                  }
+                : null,
+            })),
+          };
+        })}
         pharmacists={activePharmacists.map((pharmacist) => ({
           id: pharmacist.id,
           firstName: pharmacist.firstName,
@@ -200,6 +218,10 @@ export default async function CalendarioMensilePage({
         siteName={selectedCalendar.site.name}
         month={month}
         year={selectedCalendar.year}
+        selectedPharmacistId={selectedPharmacistId}
+        selectedPharmacistName={
+          selectedPharmacist ? `${selectedPharmacist.firstName} ${selectedPharmacist.lastName}` : undefined
+        }
         settings={
           settings ?? {
             dayOnCallStartTime: "08:00",
